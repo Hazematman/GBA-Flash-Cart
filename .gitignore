@@ -1,0 +1,5 @@
+*.cf
+gba_bus_testbench
+*.vcd
+*.o
+*.swp
