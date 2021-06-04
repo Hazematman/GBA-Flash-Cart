@@ -8,7 +8,6 @@ entity gba_bus is
           not_read_enable : in std_logic;
           address_low_data : inout std_logic_vector(15 downto 0);
           address_high : std_logic_vector(7 downto 0);
-          reset : in std_logic;
 
           -- AXI Control Ports
           ACLK : in std_logic;
@@ -32,6 +31,9 @@ architecture behavior of gba_bus is
     signal data : unsigned(15 downto 0);
     signal bus_data : std_logic_vector(15 downto 0);
     signal axi_bus_data : std_logic_vector(31 downto 0);
+    
+    signal chip_select_n : std_logic_vector(1 downto 0);
+    signal read_enable_n : std_logic_vector(1 downto 0);
 
     -- Define state machine for accessing AXI bus
     type axi_state_t is (state_start_read_addr, 
@@ -43,24 +45,50 @@ architecture behavior of gba_bus is
     signal current_axi_state : axi_state_t; 
 begin
 
-    address_low_data <= std_logic_vector(data) when (not_chip_select = '0')
+    -- Logic to control tri-state status of the lower address bits
+    -- TODO validate that the FPGA drives the lower address biits when
+    -- chip select is enabled
+    address_low_data <= std_logic_vector(data) when (chip_select_n(0) = '0')
                                                else (others => 'Z');
 
-    -- Logic to control latching and incrementing the address
-    address_proc: process(reset, not_chip_select, not_read_enable)
+    -- Logic to sample chip select and read enable
+    sample_proc: process(ARESETn, ACLK)
     begin
-        if(reset = '1') then
+        if ARESETn = '0' then
+            chip_select_n <= (others => '1');
+            read_enable_n <= (others => '1');
+        elsif rising_edge(ACLK) then
+            chip_select_n(1) <= chip_select_n(0);
+            chip_select_n(0) <= not_chip_select;
+
+            read_enable_n(1) <= read_enable_n(0);
+            read_enable_n(0) <= not_read_enable;
+        end if;
+    end process sample_proc;
+
+    -- Logic to control latching and incrementing the address
+    address_proc: process(ARESETn, ACLK)
+    begin
+        if ARESETn = '0' then
             -- Initalize last_address and address with a fixed starting
             -- value so they both contain the exact same value
             last_address <= to_unsigned(123, address'length);
-            address <= to_unsigned(123, address'length);
-        elsif(falling_edge(not_chip_select)) then
-            last_address <= address;
-            address <= unsigned(address_high & address_low_data);
-        elsif(falling_edge(not_read_enable)) then
-            last_address <= address;
-            address <= address + to_unsigned(1, address'length); 
-            data <= unsigned(bus_data);
+            address <= to_unsigned(123, address'length);       
+        elsif rising_edge(ACLK) then
+            -- If this is the falling edge of chip select then we want
+            -- to latch in the address coming from the GBA bus
+            if chip_select_n = "10" then
+                last_address <= address;
+                address <= unsigned(address_high & address_low_data);
+
+            -- If this is the falling edge of the read enable then we
+            -- we want to increment the internal address counter and
+            -- output data we we read from the AXI bus
+            elsif read_enable_n = "10" then
+                last_address <= address;
+                address <= address + to_unsigned(1, address'length); 
+                data <= unsigned(bus_data);
+            end if;
         end if;
     end process address_proc;
 
