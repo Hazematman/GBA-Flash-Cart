@@ -22,7 +22,7 @@ entity gba_bus is
           -- AXI Read Data Ports
           RVALID : in std_logic;
           RREADY : out std_logic;
-          RDATA : in std_logic_vector(31 downto 0);
+          RDATA : in std_logic_vector(31 downto 0)
           );
 end gba_bus;
 
@@ -30,7 +30,7 @@ architecture behavior of gba_bus is
     signal address : unsigned(23 downto 0);
     signal last_address : unsigned(23 downto 0);
     signal data : unsigned(15 downto 0);
-    signal bus_data : std_logic_vector(31 downto 0);
+    signal bus_data : std_logic_vector(15 downto 0);
     signal axi_bus_data : std_logic_vector(31 downto 0);
 
     -- Define state machine for accessing AXI bus
@@ -70,7 +70,7 @@ begin
         -- Since AXI is 32bit, and the GBA has a 16bit bus
         -- We need to figure out which half of the 32bit data
         -- the GBA is trying to read
-        if address(0) = 0 then
+        if address(0) = '0' then
             bus_data <= axi_bus_data(15 downto 0);
         else
             bus_data <= axi_bus_data(31 downto 16);
@@ -80,60 +80,60 @@ begin
     -- Logic for AXI state machine
     axi_proc: process(ACLK, ARESETn)
     begin
-        if ARESETn = 0 then
+        if ARESETn = '0' then
             current_axi_state <= state_wait;
-            ARVALID <= 0;
-            RREADY <= 0;
+            ARVALID <= '0';
+            RREADY <= '0';
         elsif rising_edge(ACLK) then
             case current_axi_state is
                 -- When the state is wait, we wait until the address the GBA requested is different
                 -- then we start the AXI state machine to make a read request from memory
                 when state_wait =>
-                    if last_address != address then
+                    if last_address /= address then
                         current_axi_state <= state_start_read_addr;
                     end if;
                 when state_start_read_addr =>
                     -- TODO add logic to add offset to ARADDR value
                     -- Zero out bottom two bits, so we are always reading a valid 32bit address
                     ARADDR <= std_logic_vector(address(23 downto 2)) & "00";
-                    ARVALID <= 1;
+                    ARVALID <= '1';
 
                     -- Memory may be ready to read the address immediatley, in this case
                     -- we want to jump right to the data phase on the same clock cycle, instead
                     -- of waiting an extra clock cycle for the ARREADY signal to be asserted
-                    if ARREADY = 1 then
+                    if ARREADY = '1' then
                         current_axi_state <= state_wait_read_data;
                     else
                         current_axi_state <= state_wait_addr_ready;
                     end if;
                 when state_wait_addr_ready =>
-                    if ARREADY = 1 then
+                    if ARREADY = '1' then
                         current_axi_state <= state_wait_read_data;
                     end if;
                 when state_wait_read_data =>
                     -- Here we deassert the ARVALID signal so memory does not think
                     -- another address request is incoming. we also tell AXI
                     -- we are ready to read the data
-                    ARVALID <= 0;
-                    RREADY <= 1;
+                    ARVALID <= '0';
+                    RREADY <= '1';
                     -- Valid may be asserted on the same clock cycle so check if
                     -- read data bus is valid right now
-                    if RVALID = 1 then
+                    if RVALID = '1' then
                         axi_bus_data <= RDATA;
                         current_axi_state <= state_end_read_data;
                     else
                         current_axi_state <= state_wait_read_data_valid;
-                    end
+                    end if;
                 when state_wait_read_data_valid =>
-                    if RVALID = 1 then
+                    if RVALID = '1' then
                         axi_bus_data <= RDATA;
                         current_axi_state <= state_end_read_data;
-                    end if
+                    end if;
                 when state_end_read_data =>
                     -- We are now done the AXI transaction, put ourselves back
                     -- into the wait state, so that we are prepared for the next
                     -- request coming from the GBA
-                    RREADY <= 0;
+                    RREADY <= '0';
                     current_axi_state <= state_wait;
             end case;
         end if;
