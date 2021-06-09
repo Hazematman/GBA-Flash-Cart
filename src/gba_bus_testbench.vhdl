@@ -63,7 +63,7 @@ begin
         type memory_t is array(0 to 15) of std_logic_vector(31 downto 0);
         variable cart_rom : memory_t := 
                                         (0 => x"0000_0010",
-                                         1 => x"0000_0011",
+                                         1 => x"DEAD_BEEF",
                                          2 => x"0000_0012",
                                          3 => x"0000_0001",
                                          others => x"0000_0000");
@@ -92,13 +92,6 @@ begin
     end process axi_proc;
 
     test_proc: process
-        type memory_t is array(0 to 15) of std_logic_vector(15 downto 0);
-        variable cart_rom : memory_t := 
-                                        (0 => x"0010",
-                                         1 => x"0011",
-                                         2 => x"0012",
-                                         3 => x"0001",
-                                         others => x"0000");
         constant test_addr : unsigned(23 downto 0) := to_unsigned(2, bus_address'length);
         constant period : time := 1000 ns;
     begin
@@ -118,6 +111,15 @@ begin
         wait for period;
         not_read_enable <= '0';
         wait for period;
+        not_read_enable <= '1';
+        wait for period;
+        not_read_enable <= '0';
+        wait for period;
+        not_read_enable <= '1';
+        wait for period;
+        not_read_enable <= '0';
+        wait for period;
+        not_read_enable <= '1';
         finish;
     end process test_proc;
 end behavior;

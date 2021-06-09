@@ -92,7 +92,7 @@ begin
     end process address_proc;
 
     -- Logic to move data from IO
-    comb_proc: process(axi_bus_data)
+    comb_proc: process(address, axi_bus_data)
     begin
         -- Since AXI is 32bit, and the GBA has a 16bit bus
         -- We need to figure out which half of the 32bit data
@@ -124,8 +124,8 @@ begin
                 when state_start_read_addr =>
                     -- TODO add logic to add offset to ARADDR value
                     -- Zero out bottom two bits, so we are always reading a valid 32bit address
-                    ARADDR(23 downto 0) <= std_logic_vector(address(23 downto 2)) & "00";
-                    ARADDR(31 downto 24) <= (others => '0');
+                    ARADDR(24 downto 0) <= std_logic_vector(address(23 downto 1)) & "00";
+                    ARADDR(31 downto 25) <= (others => '0');
                     ARVALID <= '1';
 
                     -- Memory may be ready to read the address immediatley, in this case
