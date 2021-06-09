@@ -32,8 +32,8 @@ architecture behavior of gba_bus is
     signal bus_data : std_logic_vector(15 downto 0);
     signal axi_bus_data : std_logic_vector(31 downto 0);
     
-    signal chip_select_n : std_logic_vector(1 downto 0);
-    signal read_enable_n : std_logic_vector(1 downto 0);
+    signal chip_select_n : std_logic_vector(2 downto 0);
+    signal read_enable_n : std_logic_vector(2 downto 0);
 
     -- Define state machine for accessing AXI bus
     type axi_state_t is (state_start_read_addr, 
@@ -48,7 +48,7 @@ begin
     -- Logic to control tri-state status of the lower address bits
     -- TODO validate that the FPGA drives the lower address biits when
     -- chip select is enabled
-    address_low_data <= std_logic_vector(data) when (chip_select_n(0) = '0')
+    address_low_data <= std_logic_vector(data) when (chip_select_n(2) = '0')
                                                else (others => 'Z');
 
     -- Logic to sample chip select and read enable
@@ -58,9 +58,11 @@ begin
             chip_select_n <= (others => '1');
             read_enable_n <= (others => '1');
         elsif rising_edge(ACLK) then
+            chip_select_n(2) <= chip_select_n(1);
             chip_select_n(1) <= chip_select_n(0);
             chip_select_n(0) <= not_chip_select;
 
+            read_enable_n(2) <= read_enable_n(1);
             read_enable_n(1) <= read_enable_n(0);
             read_enable_n(0) <= not_read_enable;
         end if;
@@ -72,20 +74,17 @@ begin
         if ARESETn = '0' then
             -- Initalize last_address and address with a fixed starting
             -- value so they both contain the exact same value
-            last_address <= to_unsigned(123, address'length);
             address <= to_unsigned(123, address'length);       
         elsif rising_edge(ACLK) then
             -- If this is the falling edge of chip select then we want
             -- to latch in the address coming from the GBA bus
-            if chip_select_n = "10" then
-                last_address <= address;
+            if chip_select_n(2 downto 1) = "10" then
                 address <= unsigned(address_high & address_low_data);
 
             -- If this is the falling edge of the read enable then we
             -- we want to increment the internal address counter and
             -- output data we we read from the AXI bus
-            elsif read_enable_n = "10" then
-                last_address <= address;
+            elsif read_enable_n(2 downto 1) = "10" then
                 address <= address + to_unsigned(1, address'length); 
                 data <= unsigned(bus_data);
             end if;
@@ -112,18 +111,21 @@ begin
             current_axi_state <= state_wait;
             ARVALID <= '0';
             RREADY <= '0';
+            last_address <= to_unsigned(123, address'length);
         elsif rising_edge(ACLK) then
             case current_axi_state is
                 -- When the state is wait, we wait until the address the GBA requested is different
                 -- then we start the AXI state machine to make a read request from memory
                 when state_wait =>
                     if last_address /= address then
+                        last_address <= address;
                         current_axi_state <= state_start_read_addr;
                     end if;
                 when state_start_read_addr =>
                     -- TODO add logic to add offset to ARADDR value
                     -- Zero out bottom two bits, so we are always reading a valid 32bit address
-                    ARADDR <= std_logic_vector(address(23 downto 2)) & "00";
+                    ARADDR(23 downto 0) <= std_logic_vector(address(23 downto 2)) & "00";
+                    ARADDR(31 downto 24) <= (others => '0');
                     ARVALID <= '1';
 
                     -- Memory may be ready to read the address immediatley, in this case
